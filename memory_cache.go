@@ -19,7 +19,7 @@ func (e entry) expired() bool {
 }
 
 type MemoryCache struct {
-	mutex sync.Mutex
+	mutex sync.RWMutex
 	items map[string]entry
 }
 
@@ -42,8 +42,8 @@ func (c *MemoryCache) runJanitor(interval time.Duration) {
 }
 
 func (c *MemoryCache) Get(ctx context.Context, key string) (string, error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 	e, found := c.items[key]
 	if !found || e.expired() {
 		return "", cache.ErrNotFound
@@ -73,8 +73,8 @@ func (c *MemoryCache) Delete(ctx context.Context, key string) error {
 }
 
 func (c *MemoryCache) Has(ctx context.Context, key string) (bool, error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
+	c.mutex.RLock()
+	defer c.mutex.RUnlock()
 	e, found := c.items[key]
 	return found && !e.expired(), nil
 }
@@ -82,17 +82,36 @@ func (c *MemoryCache) Has(ctx context.Context, key string) (bool, error) {
 func (c *MemoryCache) Increment(ctx context.Context, key string, delta int64) (int64, error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+
 	e, found := c.items[key]
-	current := int64(0)
-	if found && !e.expired() {
-		parsed, err := strconv.ParseInt(e.value, 10, 64)
-		if err != nil {
-			return 0, err
+
+	var current int64
+
+	if found {
+		if e.expired() {
+			// Treat expired keys as missing.
+			found = false
+		} else {
+			parsed, err := strconv.ParseInt(e.value, 10, 64)
+			if err != nil {
+				return 0, err
+			}
+			current = parsed
 		}
-		current = parsed
 	}
+
 	current += delta
-	c.items[key] = entry{value: strconv.FormatInt(current, 10), expiresAt: e.expiresAt}
+
+	var expiresAt time.Time
+	if found {
+		expiresAt = e.expiresAt
+	}
+
+	c.items[key] = entry{
+		value:     strconv.FormatInt(current, 10),
+		expiresAt: expiresAt,
+	}
+
 	return current, nil
 }
 
