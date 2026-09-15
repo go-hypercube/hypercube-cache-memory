@@ -18,18 +18,18 @@ func (e entry) expired() bool {
 	return !e.expiresAt.IsZero() && time.Now().After(e.expiresAt)
 }
 
-type MemoryCache struct {
+type memoryCache struct {
 	mutex sync.RWMutex
 	items map[string]entry
 }
 
-func New() *MemoryCache {
-	c := &MemoryCache{items: make(map[string]entry)}
+func New() cache.Cache {
+	c := &memoryCache{items: make(map[string]entry)}
 	go c.runJanitor(time.Minute)
 	return c
 }
 
-func (c *MemoryCache) runJanitor(interval time.Duration) {
+func (c *memoryCache) runJanitor(interval time.Duration) {
 	for range time.Tick(interval) {
 		c.mutex.Lock()
 		for key, e := range c.items {
@@ -41,7 +41,7 @@ func (c *MemoryCache) runJanitor(interval time.Duration) {
 	}
 }
 
-func (c *MemoryCache) Get(ctx context.Context, key string) (string, error) {
+func (c *memoryCache) Get(ctx context.Context, key string) (string, error) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	e, found := c.items[key]
@@ -51,7 +51,7 @@ func (c *MemoryCache) Get(ctx context.Context, key string) (string, error) {
 	return e.value, nil
 }
 
-func (c *MemoryCache) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
+func (c *memoryCache) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
 	if ttl < 0 {
 		return cache.ErrInvalidTTL
 	}
@@ -65,21 +65,21 @@ func (c *MemoryCache) Set(ctx context.Context, key string, value string, ttl tim
 	return nil
 }
 
-func (c *MemoryCache) Delete(ctx context.Context, key string) error {
+func (c *memoryCache) Delete(ctx context.Context, key string) error {
 	c.mutex.Lock()
 	delete(c.items, key)
 	c.mutex.Unlock()
 	return nil
 }
 
-func (c *MemoryCache) Has(ctx context.Context, key string) (bool, error) {
+func (c *memoryCache) Has(ctx context.Context, key string) (bool, error) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	e, found := c.items[key]
 	return found && !e.expired(), nil
 }
 
-func (c *MemoryCache) Increment(ctx context.Context, key string, delta int64) (int64, error) {
+func (c *memoryCache) Increment(ctx context.Context, key string, delta int64) (int64, error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -115,7 +115,7 @@ func (c *MemoryCache) Increment(ctx context.Context, key string, delta int64) (i
 	return current, nil
 }
 
-func (c *MemoryCache) Expire(ctx context.Context, key string, ttl time.Duration) error {
+func (c *memoryCache) Expire(ctx context.Context, key string, ttl time.Duration) error {
 	if ttl < 0 {
 		return cache.ErrInvalidTTL
 	}
