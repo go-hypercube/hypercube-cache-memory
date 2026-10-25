@@ -18,18 +18,22 @@ func (e entry) expired() bool {
 	return !e.expiresAt.IsZero() && time.Now().After(e.expiresAt)
 }
 
-type memoryCache struct {
+// Cache is an in-process cache safe for concurrent use. Construct it with New.
+type Cache struct {
 	mutex sync.RWMutex
 	items map[string]entry
 }
 
-func New() cache.Cache {
-	c := &memoryCache{items: make(map[string]entry)}
+var _ cache.Cache = (*Cache)(nil)
+
+// New creates an in-memory cache and starts its expiration janitor.
+func New() *Cache {
+	c := &Cache{items: make(map[string]entry)}
 	go c.runJanitor(time.Minute)
 	return c
 }
 
-func (c *memoryCache) runJanitor(interval time.Duration) {
+func (c *Cache) runJanitor(interval time.Duration) {
 	for range time.Tick(interval) {
 		c.mutex.Lock()
 		for key, e := range c.items {
@@ -41,7 +45,7 @@ func (c *memoryCache) runJanitor(interval time.Duration) {
 	}
 }
 
-func (c *memoryCache) Get(ctx context.Context, key string) (string, error) {
+func (c *Cache) Get(ctx context.Context, key string) (string, error) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	e, found := c.items[key]
@@ -51,7 +55,7 @@ func (c *memoryCache) Get(ctx context.Context, key string) (string, error) {
 	return e.value, nil
 }
 
-func (c *memoryCache) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
+func (c *Cache) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
 	if ttl < 0 {
 		return cache.ErrInvalidTTL
 	}
@@ -65,21 +69,21 @@ func (c *memoryCache) Set(ctx context.Context, key string, value string, ttl tim
 	return nil
 }
 
-func (c *memoryCache) Delete(ctx context.Context, key string) error {
+func (c *Cache) Delete(ctx context.Context, key string) error {
 	c.mutex.Lock()
 	delete(c.items, key)
 	c.mutex.Unlock()
 	return nil
 }
 
-func (c *memoryCache) Has(ctx context.Context, key string) (bool, error) {
+func (c *Cache) Has(ctx context.Context, key string) (bool, error) {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	e, found := c.items[key]
 	return found && !e.expired(), nil
 }
 
-func (c *memoryCache) Increment(ctx context.Context, key string, delta int64) (int64, error) {
+func (c *Cache) Increment(ctx context.Context, key string, delta int64) (int64, error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -115,7 +119,7 @@ func (c *memoryCache) Increment(ctx context.Context, key string, delta int64) (i
 	return current, nil
 }
 
-func (c *memoryCache) Expire(ctx context.Context, key string, ttl time.Duration) error {
+func (c *Cache) Expire(ctx context.Context, key string, ttl time.Duration) error {
 	if ttl < 0 {
 		return cache.ErrInvalidTTL
 	}

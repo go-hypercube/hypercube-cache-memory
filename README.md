@@ -20,6 +20,7 @@ app := hypercube.New(cfg, db, cache)
 
 ## Notes
 
+- `New()` returns `*memorycache.Cache`, which implements `cache.Cache`.
 - Implements the full `github.com/go-hypercube/go-hypercube/cachee` interface: `Get`, `Set`, `Delete`, `Has`, `Increment`, `Expire`.
 - Misses map to `cache.ErrNotFound`; negative TTLs return `cache.ErrInvalidTTL`.
 - Data lives only in the process's memory — nothing is shared across instances or survives a restart. Not suitable for multi-instance deployments; use `hypercube-cache-redis` or `hypercube-cache-memcached` for that.
